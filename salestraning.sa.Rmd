@@ -1,0 +1,89 @@
+---
+title: "Salespeople.sa"
+author: "yuexili"
+date: "11/16/2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#read data
+```{r}
+library(readxl)
+library(gdata)
+install.packages("readxl")
+install.packages("gdata")
+require("xlsx")
+# install.packages("openxlsx")
+library(openxlsx)
+
+
+setwd("/Users/liyuexi/Desktop/omis2392/Salesperson Training Project")
+storeattributes=read.csv("Store attributes.csv")
+surveydata=read.csv("Survey data.csv")
+traincomp12=read_xls("Training Completion FY12.xls",1)
+traincomp13=read.xlsx("Training Completion FY13.xlsx",1)
+transactiondata <- read.table("Transaction-HR data FY11-FY14.txt", sep = "\t", header=TRUE)
+
+```
+
+#Merge and Aggregate raw data 
+```{r}
+library(dplyr)
+install.packages("dplyr")
+
+#merge the store atrributes data with transactiondata with store number   #Denoted as: Raw dataset 1
+transactiondata_merged <- merge(transactiondata,storeattributes,"store_numbner")  
+
+#followed the steps given from week1
+transactiondata_merged$month_num <- ifelse(transactiondata_merged$month=='JAN',1,ifelse(transactiondata_merged$month=='FEB',2,ifelse(transactiondata_merged$month=='MAR',3,ifelse(transactiondata_merged$month=='APR',4,ifelse(transactiondata_merged$month=='MAY',5,ifelse(transactiondata_merged$month=='JUN',6,ifelse(transactiondata_merged$month=='JUL',7,ifelse(transactiondata_merged$month=='AUG',8,ifelse(transactiondata_merged$month=='SEP',9,ifelse(transactiondata_merged$month=='OCT',10,ifelse(transactiondata_merged$month=='NOV',11,12)))))))))))
+
+#create the varibales FY in transaction_merged table 
+transactiondata_merged$FY <-
+  ifelse(transactiondata_merged$month_num<8,transactiondata_merged$year-1,transactiondata_merged$year)
+
+#aggregate monthly sales referrring to FY
+#I know this is just a simple aggregate table, just make sure 
+agg_transaction<- aggregate(transactiondata_merged[c("net_purchase_amount")], by=list(transactiondata_merged$FY,transactiondata_merged$month_num), mean)
+```
+
+#trainning modules counts and create varibales
+```{r}
+#create the service and product seperately but I am not sure whether we should should the same name in repect to the df13, since it might be easier for use in later data aggregation part but also might arise more complex problems.
+#so, I just seperate the part first for the sake of avoiding errors 
+
+#training modules in 12
+traincomp12$train_service<- ifelse(traincomp12$`Spec. Ev.`=='Yes',1,0)
+traincomp12$train_product<- ifelse(traincomp12$Warranty=='Yes' | traincomp12$Credit=='Yes',1,0)
+#training modules in 13 like I said above, I seperate on the variables's name,but I have no idea what should we do
+#Used the simple Yes situation to judge wether or not took the training programme. I avoid the N/A situation in this part. Logically, I think this makes sense and corresponds to what we discussed. 
+traincomp13$train_service13<- ifelse(traincomp13$`Service.&.Selling`=='Yes',1,0)
+traincomp13$train_product13<-ifelse(traincomp13$Warranties=='Yes' | traincomp13$Credit=='Yes' |traincomp13$Celebrity.Brand=='Yes' || traincomp13$Celebration=='Yes' | traincomp13$Watches=='Yes'| traincomp13$Color=='Yes' ||traincomp13$Sp..Events=='Yes',1,0)
+
+#I was trying to merge the traincompl12 and traincompl13 data frame to the transaction_merged one, and also Denoted it as transaction_merged1 
+#rename the store# first for better use to link 
+names(traincomp12)[names(traincomp12)=='Store #']<-'store_number'
+names(traincomp13)[names(traincomp13)=='Store #']<-'store_number'
+transactiondata_merged0 <- merge(transactiondata_merged,traincompl2,"store_number")
+merge1transactiondata <- merge(transactiondata_merged0,traincompl3,"tore_number")
+```
+
+#data process on the varibales of employees Job name and job category
+```{r}
+#filter the jewelry consultant 
+traincomp12$job_jc<- ifelse(traincomp12$`Job Name` =='Jewelry Consultant','JC','other')
+summary(traincomp12$Category)
+print(traincomp12$Category)
+traincomp12$job_cate<- ifelse(traincomp12$Category=='FT-Reg','FT','PT')
+print(traincomp13$Job.Name)
+traincomp13$job_jc<- ifelse(traincomp13$Job.Name=='JC', 'JC','other')
+print(traincomp13$Category)
+#traincomp13$job_cate<- ifelse(traincomp13$Category=='FT-Reg',1,ifelse(traincomp13$Category=='FT-Temp', 1,2))
+traincomp13$job_cate<- ifelse(traincomp13$Category=='FT-Reg' | traincomp13$Category=='FT-Temp', 'FT','PT')
+```
+
+
+
+
