@@ -1,0 +1,11 @@
+*.DS_Store
+*.RData
+*.RDataTmp
+*.Rhistory
+*.xsl
+*.xls
+*.xlsx
+*.doc
+*.docx
+*.txt
+*.csv
