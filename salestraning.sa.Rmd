@@ -9,17 +9,23 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
+
+```{r}
+install.packages("readxl")
+install.packages("gdata")
+install.packages("dplyr")
+install.packages("VIF")
+install.packages("usdm")
+install.packages("lmtest")
+```
+
 #read data
 ```{r}
 library(readxl)
 library(gdata)
-install.packages("readxl")
-install.packages("gdata")
-require("xlsx")
 library(openxlsx)
 
-
-setwd("/Users/liyuexi/Desktop/omis2392/Salesperson Training Project")
+setwd(choose.dir(caption = "Select workspace for this project"))
 storeinfo=read.csv("Store attributes.csv")
 surveydata=read.csv("Survey data.csv")
 traincomp12=read_xls("Training Completion FY12.xls",1)
@@ -31,7 +37,6 @@ transaction <- read.table("Transaction-HR data FY11-FY14.txt", sep = "\t", heade
 # data cleansing and raw dataset processing 
 ```{r}
 library(dplyr)
-install.packages("dplyr")
 
 #survey data divided into two qualitatic group: product and competency 
 surveydata$av_friendly<-rowMeans(surveydata[,c("sh1","sh2","sh3","sh4","sh5")],na.rm = TRUE)
@@ -112,8 +117,6 @@ mergetest3<- merge(mergetest2, storeinfo, "store_number", rm.na=TRUE)
 
 library("VIF")
 library("usdm")
-install.packages("VIF")
-install.packages("usdm")
 library(dplyr)  
 
 df1=data.frame(mergetest2$purchasetransactionamount,mergetest2$purchasebasketsize,mergetest2$est_income_code,mergetest2$length_of_residence,mergetest2$net_purchase_amount,mergetest2$SA_YearsofService)
@@ -129,7 +132,6 @@ survey_competency<- lm(av_competency  ~ train_service+ train_product + purchaset
 summary(survey_competency)
 
 
-install.packages("lmtest")
 library(lmtest)
 
 
