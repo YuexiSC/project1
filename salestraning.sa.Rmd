@@ -16,72 +16,177 @@ library(gdata)
 install.packages("readxl")
 install.packages("gdata")
 require("xlsx")
-# install.packages("openxlsx")
 library(openxlsx)
 
 
 setwd("/Users/liyuexi/Desktop/omis2392/Salesperson Training Project")
-storeattributes=read.csv("Store attributes.csv")
+storeinfo=read.csv("Store attributes.csv")
 surveydata=read.csv("Survey data.csv")
 traincomp12=read_xls("Training Completion FY12.xls",1)
 traincomp13=read.xlsx("Training Completion FY13.xlsx",1)
-transactiondata <- read.table("Transaction-HR data FY11-FY14.txt", sep = "\t", header=TRUE)
+transaction <- read.table("Transaction-HR data FY11-FY14.txt", sep = "\t", header=TRUE)
 
 ```
 
-#Merge and Aggregate raw data 
+# data cleansing and raw dataset processing 
 ```{r}
 library(dplyr)
 install.packages("dplyr")
 
-#merge the store atrributes data with transactiondata with store number   #Denoted as: Raw dataset 1
-transactiondata_merged <- merge(transactiondata,storeattributes,"store_numbner")  
+#survey data divided into two qualitatic group: product and competency 
+surveydata$av_friendly<-rowMeans(surveydata[,c("sh1","sh2","sh3","sh4","sh5")],na.rm = TRUE)
+surveydata$av_competency <-rowMeans(surveydata[,c("sc1","sc2","sc3","sc4")],na.rm = TRUE)
+surveydata$sh1 <- surveydata$sh2  <- surveydata$sh3  <- surveydata$sh4 <-surveydata$sh5 <-  NULL
+surveydata$sc1 <- surveydata$sc2  <- surveydata$sc3  <- surveydata$sc4 <-  NULL
+surveydata$greetedbinary<- surveydata$jcdiscussedcreditoptionsbinary <- surveydata$informedeventbinary <- surveydata$pressure <- surveydata$store_number<- NULL
+surveydata1= surveydata
+
+
+#processing on the traincomp12 and traincomp13 then join together and create dummies 
+traincomp12$Status <-traincomp13$Status<- NULL 
+
+traincomp12<-filter(traincomp12, `Job Name`=="Jewelry Consultant") 
+traincomp12$Job.Name<- ifelse(traincomp12$`Job Name`=="Jewelry Consultant", 'JC','other')
+traincomp12$`Job Name`<- NULL
+traincomp13<-filter(traincomp13, Job.Name=="JC")
+
+
+names(traincomp12)[names(traincomp12)=='Store #']<-'store_number'
+names(traincomp13)[names(traincomp13)=='Store.#']<-'store_number'
+names(transaction)[names(transaction)=='sales_assoc_1']<-'EID'
+
+summary(traincomp12)
+train1213<- merge(traincomp12,traincomp13, "EID",all=TRUE)
+summary(train1213)
+
+train1213$store_number <- ifelse(is.na(train1213$store_number.x), train1213$store_number.y,train1213$store_number.x)
+
+train1213$State <-ifelse(is.na(train1213$State.x),train1213$State.y,train1213$State.x)  
+
+train1213$job.name<-ifelse(is.na(train1213$Job.Name.x),train1213$Job.Name.y,train1213$Job.Name.x)
+  
+train1213$Category.x<- ifelse(train1213$Category.x=='FT-Reg','FT','PT')
+train1213$Category.y<- ifelse(train1213$Category.y=='FT-Reg' | train1213$Category.y=='FT-Temp', 'FT','PT')
+train1213$category<- ifelse(is.na(train1213$Category.x),train1213$Category.y,train1213$Category.x)
+
+
+#create product dummy 1/0 condition of training 
+train1213$train_product<- ifelse(train1213$Warranty=='Yes' | train1213$Credit.x=='Yes' | train1213$Warranties=='Yes' | train1213$Credit.y =='Yes' | train1213$Celebrity.Brand== 'Yes' | train1213$Celebration=='Yes' | train1213$Watches=='Yes' |train1213$Color== 'Yes', 1,0)
+train1213$train_product <- ifelse(is.na(train1213$train_product),0,train1213$train_product)
+
+#create service dummy 1/0 condition of training 
+train1213$train_service <- ifelse(train1213$`Spec. Ev.`=='Yes' | train1213$`Service.&.Selling`=='Yes',1,0)
+train1213$train_service <- ifelse(is.na(train1213$train_service),0,train1213$train_service)
+
+summary(train1213)
+newtrain1213<- subset(train1213,select=c("EID","store_number","State","category","train_product","train_service","job.name"))
+```
+
+
+
+```{r}
 
 #followed the steps given from week1
-transactiondata_merged$month_num <- ifelse(transactiondata_merged$month=='JAN',1,ifelse(transactiondata_merged$month=='FEB',2,ifelse(transactiondata_merged$month=='MAR',3,ifelse(transactiondata_merged$month=='APR',4,ifelse(transactiondata_merged$month=='MAY',5,ifelse(transactiondata_merged$month=='JUN',6,ifelse(transactiondata_merged$month=='JUL',7,ifelse(transactiondata_merged$month=='AUG',8,ifelse(transactiondata_merged$month=='SEP',9,ifelse(transactiondata_merged$month=='OCT',10,ifelse(transactiondata_merged$month=='NOV',11,12)))))))))))
+transaction$month_num <- ifelse(transaction$month=='JAN',1,ifelse(transaction$month=='FEB',2,ifelse(transaction$month=='MAR',3,ifelse(transaction$month=='APR',4,ifelse(transaction$month=='MAY',5,ifelse(transaction$month=='JUN',6,ifelse(transaction$month=='JUL',7,ifelse(transaction$month=='AUG',8,ifelse(transaction$month=='SEP',9,ifelse(transaction$month=='OCT',10,ifelse(transaction$month=='NOV',11,12)))))))))))
 
 #create the varibales FY in transaction_merged table 
-transactiondata_merged$FY <-
-  ifelse(transactiondata_merged$month_num<8,transactiondata_merged$year-1,transactiondata_merged$year)
+transaction$FY <-
+  ifelse(transaction$month_num<8,transaction$year-1,transaction$year)
 
-#aggregate monthly sales referrring to FY
-#I know this is just a simple aggregate table, just make sure 
-agg_transaction<- aggregate(transactiondata_merged[c("net_purchase_amount")], by=list(transactiondata_merged$FY,transactiondata_merged$month_num), mean)
+summary(transaction)
+
+emploinfo<- subset(transaction,select=c("EID","transaction_id","SA_gender","SA_AssignmentCategory","SA_YearsofService","SA_MartialStatus","SA_RateofPay","SA_Dependent"),rm.na=TRUE)
+
+customerinfo<- subset(transaction,select=c("customer_id","gender","est_income_code","ethnic_code","homeowner_code","length_of_residence","child","net_purchase_amount"),rm.na=TRUE)
+
+
+agg_transaction<- aggregate(transaction[c("net_purchase_amount")], by=list(transaction$FY,transaction$month_num), mean)
 ```
 
-#trainning modules counts and create varibales
+#traincomp13 and traincomp12 data cleansing and processing
 ```{r}
-#create the service and product seperately but I am not sure whether we should should the same name in repect to the df13, since it might be easier for use in later data aggregation part but also might arise more complex problems.
-#so, I just seperate the part first for the sake of avoiding errors 
+mergetest0<-merge(surveydata1,customerinfo, "customer_id", rm.na=TRUE)
+mergetest1<- merge(mergetest0,emploinfo, "transaction_id",rm.na=TRUE)
+mergetest2<- merge(mergetest1, newtrain1213, "EID", rm.na=TRUE)
+mergetest3<- merge(mergetest2, storeinfo, "store_number", rm.na=TRUE)
 
-#training modules in 12
-traincomp12$train_service<- ifelse(traincomp12$`Spec. Ev.`=='Yes',1,0)
-traincomp12$train_product<- ifelse(traincomp12$Warranty=='Yes' | traincomp12$Credit=='Yes',1,0)
-#training modules in 13 like I said above, I seperate on the variables's name,but I have no idea what should we do
-#Used the simple Yes situation to judge wether or not took the training programme. I avoid the N/A situation in this part. Logically, I think this makes sense and corresponds to what we discussed. 
-traincomp13$train_service13<- ifelse(traincomp13$`Service.&.Selling`=='Yes',1,0)
-traincomp13$train_product13<-ifelse(traincomp13$Warranties=='Yes' | traincomp13$Credit=='Yes' |traincomp13$Celebrity.Brand=='Yes' || traincomp13$Celebration=='Yes' | traincomp13$Watches=='Yes'| traincomp13$Color=='Yes' ||traincomp13$Sp..Events=='Yes',1,0)
+library("VIF")
+library("usdm")
+install.packages("VIF")
+install.packages("usdm")
+library(dplyr)  
 
-#I was trying to merge the traincompl12 and traincompl13 data frame to the transaction_merged one, and also Denoted it as transaction_merged1 
-#rename the store# first for better use to link 
-names(traincomp12)[names(traincomp12)=='Store #']<-'store_number'
-names(traincomp13)[names(traincomp13)=='Store #']<-'store_number'
-transactiondata_merged0 <- merge(transactiondata_merged,traincompl2,"store_number")
-merge1transactiondata <- merge(transactiondata_merged0,traincompl3,"tore_number")
+df1=data.frame(mergetest2$purchasetransactionamount,mergetest2$purchasebasketsize,mergetest2$est_income_code,mergetest2$length_of_residence,mergetest2$net_purchase_amount,mergetest2$SA_YearsofService)
+cor(df1)
+vif(df1)
+
+#simple OLS model 
+summary(mergetest3)
+survey_friendly<-   lm(av_friendly ~ train_service+ train_product + purchasetransactionamount + purchasebasketsize + factor(gender) + est_income_code + ethnic_code + factor(category)+ homeowner_code + length_of_residence + factor(child)+ net_purchase_amount+ factor(SA_gender) + ST + factor(MallGrade) +MallSalesSF + StoreSqFt +TotalCases +PadCount + factor(MajorCompetitorPresent), data=mergetest3)
+summary(survey_friendly)
+
+survey_competency<- lm(av_competency  ~ train_service+ train_product + purchasetransactionamount + purchasebasketsize + factor(gender) + est_income_code + ethnic_code + factor(category)+ homeowner_code + length_of_residence + factor(child)+ net_purchase_amount+ factor(SA_gender) + ST + factor(MallGrade) +MallSalesSF + StoreSqFt +TotalCases +PadCount + factor(MajorCompetitorPresent), data=mergetest3)
+summary(survey_competency)
+
+
+install.packages("lmtest")
+library(lmtest)
+
+
 ```
 
-#data process on the varibales of employees Job name and job category
+
+#discard 
 ```{r}
-#filter the jewelry consultant 
-traincomp12$job_jc<- ifelse(traincomp12$`Job Name` =='Jewelry Consultant','JC','other')
-summary(traincomp12$Category)
-print(traincomp12$Category)
-traincomp12$job_cate<- ifelse(traincomp12$Category=='FT-Reg','FT','PT')
-print(traincomp13$Job.Name)
-traincomp13$job_jc<- ifelse(traincomp13$Job.Name=='JC', 'JC','other')
-print(traincomp13$Category)
-#traincomp13$job_cate<- ifelse(traincomp13$Category=='FT-Reg',1,ifelse(traincomp13$Category=='FT-Temp', 1,2))
-traincomp13$job_cate<- ifelse(traincomp13$Category=='FT-Reg' | traincomp13$Category=='FT-Temp', 'FT','PT')
+# traincomp12<-filter(traincomp12, job_jc=='JC')
+# summary(traincomp12$Category)
+# print(traincomp12$Category)
+# traincomp12$job_cate<- ifelse(traincomp12$Category=='FT-Reg','FT','PT')
+# traincomp12$Status<- traincomp12$'Job Name'<- NULL
+# 
+# print(traincomp13$Job.Name)
+# traincomp13<-filter(traincomp13,Job.Name=='JC')
+# print(traincomp13$Category)
+# comp13$job_cate<- ifelse(traincomp13$Category=='FT-Reg' | traincomp13$Category=='FT-Temp', 'FT','PT')
+# traincomp13<-filter(traincomp13, Status=='Active')
+# traincomp13$Status <-NULL
+
+
+# names(traincomp12)[names(traincomp12)=='Store #']<-'store_number'
+# names(traincomp13)[names(traincomp13)=='Store.#']<-'store_number'
+# names(transaction)[names(transaction)=='sales_assoc_1']<-'EID'
+# 
+# transaction0 <- merge(transaction,traincomp12,"EID")
+# merge1transaction <- merge(transaction0,traincomp13,"EID")
+# 
+# surveydata$av_friendly<-rowMeans(surveydata[,c("sh1","sh2","sh3","sh4","sh5")],na.rm = TRUE)
+# surveydata$av_competency <-rowMeans(surveydata[,c("sc1","sc2","sc3","sc4")],na.rm = TRUE)
+# surveydata$sh1 <- surveydata$sh2  <- surveydata$sh3  <- surveydata$sh4 <-surveydata$sh5 <-  NULL
+# surveydata$sc1 <- surveydata$sc2  <- surveydata$sc3  <- surveydata$sc4 <-  NULL
+# surveydata$greetedbinary<- surveydata$jcdiscussedcreditoptionsbinary <- surveydata$informedeventbinary <- surveydata$pressure <- surveydata$store_number<- NULL
+# surveydata1= surveydata
+
+
+merge2tran_survey<- merge(merge1transaction,surveydata1,"transaction_id")
+
+
+```
+
+
+
+
+#discard 
+```{r}
+traincomp12$train_product12.q2<- ifelse(traincomp12$Warranty=='Yes', 1,0)
+traincomp12$train_product12.q2<- ifelse(traincomp12$Credit=='Yes', traincomp12$train_product12.q2+1, traincomp12$train_product12.q2) #count on product training module situation  #should be used in question 2 
+
+traincomp13$train_product13.q2<- ifelse(traincomp13$Warranties=='Yes',1,0) 
+traincomp13$train_product13.q2<-ifelse(traincomp13$Credit=='Yes',traincomp13$train_product13.q2+1,traincomp13$train_product13.q2)
+traincomp13$train_product13.q2<-ifelse(traincomp13$Celebrity.Brand=='Yes',traincomp13$train_product13.q2+1,traincomp13$train_product13.q2)
+traincomp13$train_product13.q2<-ifelse(traincomp13$Celebration=='Yes',traincomp13$train_product13.q2+1,traincomp13$train_product13.q2)
+traincomp13$train_product13.q2<-ifelse(traincomp13$Watches=='Yes',traincomp13$train_product13.q2+1,traincomp13$train_product13.q2)
+traincomp13$train_product13.q2<-ifelse(traincomp13$Color=='Yes',traincomp13$train_product13.q2+1,traincomp13$train_product13.q2)
+traincomp13$train_product13.q2<-ifelse(traincomp13$Sp..Events=='Yes',traincomp13$train_product13.q2+1,traincomp13$train_product13.q2)    #count on product training module situation # should be used in question 2 
 ```
 
 
